@@ -49,6 +49,42 @@ double parse_double_or_exit(char const *str, char const *name)
   return value;
 }
 
+/*--------------------------------------------------------------------
+| Function: integer_param_validation
+---------------------------------------------------------------------*/
+
+ void integer_param_validation(int arg, char param, int lowestValue){
+   
+   if(arg < lowestValue){
+
+    switch(param){
+      
+        //  matrix dimension
+      case('N'):
+          fprintf(stderr, "\nErro no argumento N : dimensoes deve ser maior que %d.\n\n",(lowestValue - 1));
+            exit(1);
+             ;
+       // iterations
+      case('I'):
+           
+          fprintf(stderr, "\nErro no argumento iteracoes : iteracoes deve ser maior que %d.\n\n",(lowestValue - 1));
+              exit(1);
+          ;
+      
+    }
+
+   }
+ }
+
+ /*--------------------------------------------------------------------
+| Function: double_param_validation
+---------------------------------------------------------------------*/
+ void double_param_validation(double arg,double lowestValue){
+  if(arg < lowestValue){
+     fprintf(stderr, "\nErro na(s) temperatura(s) N : os valores de tEsq,tSup,tDir,tInf deve ser maior que %d.\n\n",(lowestValue - 1));
+                exit(1);
+  }
+ }
 
 /*--------------------------------------------------------------------
 | Function: main
@@ -83,8 +119,15 @@ int main (int argc, char** argv) {
 
 
   /* FAZER ALTERACOES AQUI */
+     integer_param_validation(N,'N', 1);
+   double_param_validation(tEsq, 0.0);
+   double_param_validation(tSup, 0.0);
+   double_param_validation(tDir, 0.0);
+   double_param_validation(tInf, 0.0);
+   integer_param_validation(iteracoes,'I', 1);
 
 
+//----------------------------------
   dm2dSetLineTo (matrix, 0, tSup);
   dm2dSetLineTo (matrix, N+1, tInf);
   dm2dSetColumnTo (matrix, 0, tEsq);
