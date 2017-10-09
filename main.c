@@ -6,18 +6,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "matrix2d.h"
+#include "mplib3.h"
+
+
 
 typedef struct{
+
     int n_iter;
-    int thread_id;
+    int t_id;
     int colunas;
     int n_tarefas;
-    int tDir:
-    int tEsq;
-    int tInf;
-    int tSup;
+    int dir:
+    int esq;
+    int baixo;
+    int cima;
     }info_t;
     
     
@@ -26,34 +31,37 @@ typedef struct{
 | Function: simul
 ---------------------------------------------------------------------*/
 
-void simul(info_t *info) {
+void simul(info_t *information) {
 
-    +DoubleMatrix2D *matrix, *matrix_aux, *tmp;
-    int iter, i, j, k, id, col, linha, cima, baixo, esq, dir, tarefas;
+    //inicializacao
+    DoubleMatrix2D *matrix, *matrix_aux, *tmp;
+    int i, j, k, id, iter, col, linhas, up, down, left, right, tarefas;
     double value;
-  
-    iter=info->n_iter;
-    id=info->thread_id;
-    col=info->colunas;
-    tarefas=info->n_tarefas;
-    linhas=col/tarefas+2;
-    cima=info->tSup;
-    baixo=info->tInf;
-    esq=info->tEsq;
-    dir=info->tDir;
-  
+    id=information.t_id;
+    iter=information.n_iter;
+    col=information.colunas;
+    tarefas=information.n_tarefas;
+    linhas=col/tarefas;
+    up=information.cima;
+    down=information.baixo;
+    left=information.esq;
+    right=information.dir;
+    double recebe_linha[col];
     matrix=dm2dNew(linhas+2,col+2);
     matrix_aux=dm2dnew(linhas+2,col+2);
-    dm2dSetColumnTo (*matrix, 0, esq);
-    dm2dSetColumnTo (*matrix, col+1, dir);
+    
+    //poe temperatura das bordas na matrix
+    dm2dSetColumnTo (*matrix, 0, left);
+    dm2dSetColumnTo (*matrix, col+2, right);
+    
     if (id==0){
-      //atencao:ver +2)
-        dm2dSetLineTo (*matrix, 0, cima);
+        dm2dSetLineTo (*matrix, 0, up);
     }
     if (id==tarefas-1){
-        dm2dSetLineTo (*matrix, linhas+1, baixo);
+        dm2dSetLineTo (*matrix, linhas+2, down);
     }
 	
+   	//atualiza matrix
    	for (k=0;k<iter;k++){ 
         for (i = 1; i < linhas; i++){
             for (j = 1; j < col; j++) {
@@ -61,40 +69,45 @@ void simul(info_t *info) {
                 dm2dSetEntry(aux, i, j, value);
             }
         }
-		/*
+		
+		// se id par, recebe e depois envia mensagem
         if (id%2==0){
-            if (id!=0){
-                ptr=recebe id-1;
-                setLine(*matrix_aux,0,*ptr);
-                envia id-1;
+            if (id!=0){ // se nao a primeira thread, troca com a anterior
+                receberMensagem(threads[id-1],threads[id],*recebe_linha, sizeof(recebe_linha)); 
+                dm2dsetLine(*matrix_aux,0,*recebe_linha);
+                enviarMensagem(threads[id],threads[id-1],*matrix_aux[col+2], sizeof(recebe_linha));
             }
-            if (id!=tarefas-1){
-                ptr=recebe id+1;
-                setLine(*matrix_aux,linhas+1,*ptr);
-                envia id+1;
+            if (id!=tarefas-1){ // se nao a ultima thread, troca com a seguinte
+                receberMensagem(threads[id+1],threads[id],*recebe_linha, sizeof(recebe_linha)); 
+                dm2dsetLine(*matrix_aux,linhas+2,*recebe_linha);
+                enviarMensagem(threads[id],threads[id+1],*matrix_aux[(linhas+1)*col], sizeof(recebe_linha));
             }
         }
             
+        //se id impar, envia e depois recebe mensagem
+        if (id%2==1){         
+            //se impar, nunca e primeira
+            enviarMensagem(threads[id],threads[id-1],*matrix_aux[col+2], sizeof(recebe_linha));
+            receberMensagem(threads[id-1],threads[id],*recebe_linha, sizeof(recebe_linha)); 
+            dm2dsetLine(*matrix_aux,0,*recebe_linha);
             
-        if (id%2==1){
-            envia id-1;
-            ptr=recebe id-1;
-            setLine(*matrix_aux,0,*ptr);
-            
-            if (id!=tarefas-1){
-                envia id+1;
-                ptr=recebe id+1;
-                setLine(*matrix_aux,linhas+1,*ptr);
+            if (id!=tarefas-1){ //se nao ultima thread, troca com a segyunte
+                enviarMensagem(threads[id],threads[id+1],*matrix_aux[(linhas+1)*col], sizeof(recebe_linha));
+                receberMensagem(threads[id+1],threads[id],*recebe_linha,sizeof(recebe_linha)); 
+                dm2dsetLine(*matrix_aux,linhas+2,*recebe_linha);
+                
             }
         }
 		
+        //troca aux com matrix
         tmp = aux;
-        aux = m;
-        m = tmp;
+        aux = matrix;
+        matrix = tmp;
     }
-    envia para main; */
+    //envia para a main
+    enviarMensagem(threads[id],main,*matrix,sizeof(matrix));
   
-    return 1;
+    return 0;
 }
   
 
@@ -124,7 +137,7 @@ double parse_double_or_exit(char const *str, char const *name)
   if(sscanf(str, "%lf", &value) != 1) {
     fprintf(stderr, "\nErro no argumento \"%s\".\n\n", name);
     exit(1);
-  }d
+  }
   return value;
 }
 
@@ -149,10 +162,7 @@ int main (int argc, char** argv) {
     double tInf = parse_double_or_exit(argv[5], "tInf");
     int iteracoes = parse_integer_or_exit(argv[6], "iteracoes");
     int trab = parse_integer_or_exit(argv[7], "trab");
-    int csz = parse_double_or_exit(arg[8], "csz");
-
-    DoubleMatrix2D *matrix;
-
+    int csz = parse_integer_or_exit(argv[8], "csz");
 
     fprintf(stderr, "\nArgumentos:\n"
 	" N=%d tEsq=%.1f tSup=%.1f tDir=%.1f tInf=%.1f iteracoes=%d\n",
@@ -164,26 +174,44 @@ int main (int argc, char** argv) {
     return 1;
     }
 
-    int i;
-    /*
+    int i,k;
+    DoubleMatrix2D *matrix_final;
+    info_t info[trab]; //array com os ids das threads
+    pthread_t threads[trab]; //array com estrutura para passar a cada thread
+    
+    inicializarMPlib(csz, trab+1);
     for (i=0;i<trab;i++){
-        cria thread (id,simul,info_t);
+        //atualiza info
+        info[i].t_id=i;
+        info[i].n_iter=iteracoes;
+        info[i].colunas=N;
+        info[i].n_tarefas=trab;
+        info[i].cima=tSup;
+        info[i].baixo=tInf;
+        info[i].esq=tEsq;
+        info[i].dir=tDir;
+    
+        pthread_create(&threads[i],NULL,simul,*info[i]);
     }
     
-    FINAL
-    for (i=0;i<trab;i++){
-        recebe ponteiro
-        if i=0
-            cria matrix? 
-        else
-            concatena? copia?
-        pthreadjoin
-    */
+    //Saida
+    matrix_final=dm2dNew(N,N);
+    dm2dSetLineTo(matrix_final,0,tSup);
+    dm2dSetLineTo(matrix_final,N+2,tInf);
+    double recebe_fatia[(N+2)*(N/trab+2)];
     
+    for (i=0;i<trab;i++){
+        receberMensagem(threads[i],main,*recebe_fatia,sizeof(recebe_fatia));
+        for (k=1;k<(N/trab+1);k++){
+            dm2dsetLine(matrix_final,k*i,recebe_fatia[k*N]);
+        }
+        pthread_join(threads[i],NULL);
+    }  
         
-  dm2dPrint(matrix);
-
-  dm2dFree(matrix);
+  dm2dPrint(matrix_final);
+  
+  libertarMPlib();
+  dm2dFree(matrix_final);
   
   return 0;
 }
