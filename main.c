@@ -19,7 +19,7 @@ typedef struct{
     int t_id;
     int colunas;
     int n_tarefas;
-    int dir:
+    int dir;
     int esq;
     int baixo;
     int cima;
@@ -31,68 +31,70 @@ typedef struct{
 | Function: simul
 ---------------------------------------------------------------------*/
 
-void simul(info_t *information) {
+void simul(void *information) {
 
     //inicializacao
+    info_t *slave_info=(info_t *)information;
     DoubleMatrix2D *matrix, *matrix_aux, *tmp;
-    int i, j, k, id, iter, col, linhas, up, down, left, right, tarefas;
+    int k,i,j;
     double value;
-    id=information.t_id;
-    iter=information.n_iter;
-    col=information.colunas;
-    tarefas=information.n_tarefas;
-    linhas=col/tarefas;
-    up=information.cima;
-    down=information.baixo;
-    left=information.esq;
-    right=information.dir;
-    double recebe_linha[col];
+    int id=slave_info->t_id;
+    int iter=slave_info->n_iter;
+    int col=slave_info->colunas;
+    int tarefas=slave_info->n_tarefas;
+    int linhas=col/tarefas;
+    int up=slave_info->cima;
+    int down=slave_info->baixo;
+    int left=slave_info->esq;
+    int right=slave_info->dir;
+    double recebe_linha[col+2];
+    
     matrix=dm2dNew(linhas+2,col+2);
-    matrix_aux=dm2dnew(linhas+2,col+2);
+    matrix_aux=dm2dNew(linhas+2,col+2);
     
     //poe temperatura das bordas na matrix
-    dm2dSetColumnTo (*matrix, 0, left);
-    dm2dSetColumnTo (*matrix, col+2, right);
+    dm2dSetColumnTo (matrix, 0, left);
+    dm2dSetColumnTo (matrix, col+2, right);
     
     if (id==0){
-        dm2dSetLineTo (*matrix, 0, up);
+        dm2dSetLineTo (matrix, 0, up);
     }
     if (id==tarefas-1){
-        dm2dSetLineTo (*matrix, linhas+2, down);
+        dm2dSetLineTo (matrix, linhas+2, down);
     }
 	
    	//atualiza matrix
    	for (k=0;k<iter;k++){ 
         for (i = 1; i < linhas; i++){
             for (j = 1; j < col; j++) {
-                value = (dm2dGetEntry(m, i-1, j) + dm2dGetEntry(m, i+1, j) + dm2dGetEntry(m, i, j-1) + dm2dGetEntry(m, i, j+1) ) / 4.0;
-                dm2dSetEntry(aux, i, j, value);
+                value = (dm2dGetEntry(matrix, i-1, j) + dm2dGetEntry(matrix, i+1, j) + dm2dGetEntry(matrix, i, j-1) + dm2dGetEntry(matrix, i, j+1) ) / 4.0;
+                dm2dSetEntry(matrix_aux, i, j, value);
             }
         }
 		
 		// se id par, recebe e depois envia mensagem
         if (id%2==0){
             if (id!=0){ // se nao a primeira thread, troca com a anterior
-                receberMensagem(threads[id-1],threads[id],*recebe_linha, sizeof(recebe_linha)); 
+                receberMensagem(threads[id-1],threads[id],*recebe_linha); sizeof(recebe_linha)); 
                 dm2dsetLine(*matrix_aux,0,*recebe_linha);
-                enviarMensagem(threads[id],threads[id-1],*matrix_aux[col+2], sizeof(recebe_linha));
+                enviarMensagem(threads[id],threads[id-1],*matrix_aux[col+2]); sizeof(recebe_linha));
             }
             if (id!=tarefas-1){ // se nao a ultima thread, troca com a seguinte
-                receberMensagem(threads[id+1],threads[id],*recebe_linha, sizeof(recebe_linha)); 
+                receberMensagem(threads[id+1],threads[id],*recebe_linha); sizeof(recebe_linha)); 
                 dm2dsetLine(*matrix_aux,linhas+2,*recebe_linha);
-                enviarMensagem(threads[id],threads[id+1],*matrix_aux[(linhas+1)*col], sizeof(recebe_linha));
+                enviarMensagem(threads[id],threads[id+1],*matrix_aux[(linhas+1)*col]); sizeof(recebe_linha));
             }
         }
             
         //se id impar, envia e depois recebe mensagem
         if (id%2==1){         
             //se impar, nunca e primeira
-            enviarMensagem(threads[id],threads[id-1],*matrix_aux[col+2], sizeof(recebe_linha));
+            enviarMensagem(threads[id],threads[id-1],*matrix_aux[col+2]); sizeof(recebe_linha));
             receberMensagem(threads[id-1],threads[id],*recebe_linha, sizeof(recebe_linha)); 
             dm2dsetLine(*matrix_aux,0,*recebe_linha);
             
             if (id!=tarefas-1){ //se nao ultima thread, troca com a segyunte
-                enviarMensagem(threads[id],threads[id+1],*matrix_aux[(linhas+1)*col], sizeof(recebe_linha));
+                enviarMensagem(threads[id],threads[id+1],*matrix_aux[(linhas+1)*col]); sizeof(recebe_linha));
                 receberMensagem(threads[id+1],threads[id],*recebe_linha,sizeof(recebe_linha)); 
                 dm2dsetLine(*matrix_aux,linhas+2,*recebe_linha);
                 
@@ -105,7 +107,7 @@ void simul(info_t *information) {
         matrix = tmp;
     }
     //envia para a main
-    enviarMensagem(threads[id],main,*matrix,sizeof(matrix));
+    enviarMensagem(threads[id],0,*matrix,sizeof(matrix));
   
     return 0;
 }
@@ -173,11 +175,15 @@ int main (int argc, char** argv) {
         " Lembrar que N >= 1, temperaturas >= 0 e iteracoes >= 1\n\n");
     return 1;
     }
+    DoubleMatrix2D *matrix_final;
+    matrix_final=dm2dNew(N,N);
+    dm2dSetLineTo(matrix_final,0,tSup);
+    dm2dSetLineTo(matrix_final,N+2,tInf);
 
     int i,k;
-    DoubleMatrix2D *matrix_final;
+    
     info_t info[trab]; //array com os ids das threads
-    pthread_t threads[trab]; //array com estrutura para passar a cada thread
+    pthread_t *threads[trab]; //array com estrutura para passar a cada thread
     
     inicializarMPlib(csz, trab+1);
     for (i=0;i<trab;i++){
@@ -191,17 +197,15 @@ int main (int argc, char** argv) {
         info[i].esq=tEsq;
         info[i].dir=tDir;
     
-        pthread_create(&threads[i],NULL,simul,*info[i]);
+        pthread_create(&threads[i],NULL,simul, &info[i]);
     }
     
     //Saida
-    matrix_final=dm2dNew(N,N);
-    dm2dSetLineTo(matrix_final,0,tSup);
-    dm2dSetLineTo(matrix_final,N+2,tInf);
+  
     double recebe_fatia[(N+2)*(N/trab+2)];
     
     for (i=0;i<trab;i++){
-        receberMensagem(threads[i],main,*recebe_fatia,sizeof(recebe_fatia));
+        receberMensagem(threads[i],0,*recebe_fatia,sizeof(recebe_fatia));
         for (k=1;k<(N/trab+1);k++){
             dm2dsetLine(matrix_final,k*i,recebe_fatia[k*N]);
         }
