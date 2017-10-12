@@ -19,10 +19,10 @@ typedef struct{
     int t_id;
     int colunas;
     int n_tarefas;
-    int dir;
-    int esq;
-    int baixo;
-    int cima;
+    double dir;
+    double esq;
+    double baixo;
+    double cima;
     }info_t;
     
     
@@ -43,31 +43,52 @@ void *simul(void *information) {
     int col=slave_info->colunas;
     int tarefas=slave_info->n_tarefas;
     int linhas=col/tarefas;
-    int up=slave_info->cima;
-    int down=slave_info->baixo;
-    int left=slave_info->esq;
-    int right=slave_info->dir;
+    double up=slave_info->cima;
+    double down=slave_info->baixo;
+    double left=slave_info->esq;
+    double right=slave_info->dir;
     double recebe_linha[col+2];
+    
+   // printf("\nid:%d",id);
+    //printf("\ncima:%f",up);
+    //printf("\nbaixo:%f",down);
+    //printf("\nesq:%f",left);
+    //printf("\ndir:%f",right);
+
+
+
+
+    
+
     
     matrix=dm2dNew(linhas+2,col+2);
     matrix_aux=dm2dNew(linhas+2,col+2);
     
     //poe temperatura das bordas na matrix
     dm2dSetColumnTo (matrix, 0, left);
-    dm2dSetColumnTo (matrix, col+2, right);
+    dm2dSetColumnTo (matrix, col+1, right);
     
     if (id==0){
         dm2dSetLineTo (matrix, 0, up);
     }
     if (id==tarefas-1){
-        dm2dSetLineTo (matrix, linhas+2, down);
+        dm2dSetLineTo (matrix, linhas+1, down);
     }
+    // dm2dPrint(matrix);
+
 	
    	//atualiza matrix
    	for (k=0;k<iter;k++){ 
+       // printf("\niter:%d\n",k);
         for (i = 1; i < linhas; i++){
+         //   printf("\nlinhas:%d\n",i);
+
             for (j = 1; j < col; j++) {
+           //     printf("\ncolunas:%d\n",j);
+
                 value = (dm2dGetEntry(matrix, i-1, j) + dm2dGetEntry(matrix, i+1, j) + dm2dGetEntry(matrix, i, j-1) + dm2dGetEntry(matrix, i, j+1) ) / 4.0;
+             //   printf("\nvalue:%f\n",value);
+
                 dm2dSetEntry(matrix_aux, i, j, value);
             }
         }
