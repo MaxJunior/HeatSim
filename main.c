@@ -1,6 +1,8 @@
 /*
-// Projeto SO - exercicio 1, version 03
+// Projeto SO - exercicio 1
 // Sistemas Operativos, DEI/IST/ULisboa 2017-18
+
+Luís Pedro Olivera Ferreira, nº83500
 */
 
 #include <stdio.h>
@@ -33,7 +35,7 @@ typedef struct{
 
 void *simul(void *information) {
 
-    //inicializacao
+    //inicializacao das variaveis e criacao das matrizes
     info_t *slave_info=(info_t *)information;
     DoubleMatrix2D *matrix, *matrix_aux, *tmp;
     int k,i,j;
@@ -48,86 +50,67 @@ void *simul(void *information) {
     double left=slave_info->esq;
     double right=slave_info->dir;
     double recebe_linha[col+2];
-    
-   // printf("\nid:%d",id);
-    //printf("\ncima:%f",up);
-    //printf("\nbaixo:%f",down);
-    //printf("\nesq:%f",left);
-    //printf("\ndir:%f",right);
-
-
-
-
-    
-
-    
     matrix=dm2dNew(linhas+2,col+2);
     matrix_aux=dm2dNew(linhas+2,col+2);
     
-    //poe temperatura das bordas na matrix
+    //poe as temperaturas iniciais nas bordas das matrizes
     dm2dSetColumnTo (matrix, 0, left);
     dm2dSetColumnTo (matrix, col+1, right);
+    dm2dSetColumnTo (matrix_aux, 0, left);
+    dm2dSetColumnTo (matrix_aux, col+1, right);
     
     if (id==0){
         dm2dSetLineTo (matrix, 0, up);
+        dm2dSetLineTo (matrix_aux, 0, up);
     }
     if (id==tarefas-1){
         dm2dSetLineTo (matrix, linhas+1, down);
+        dm2dSetLineTo (matrix_aux, linhas+1, down);
     }
-    // dm2dPrint(matrix);
-
 	
    	//atualiza matrix
    	for (k=0;k<iter;k++){ 
-       // printf("\niter:%d\n",k);
-        for (i = 1; i < linhas; i++){
-         //   printf("\nlinhas:%d\n",i);
-
-            for (j = 1; j < col; j++) {
-           //     printf("\ncolunas:%d\n",j);
-
+        for (i = 1; i < linhas+1; i++){
+            for (j = 1; j < col+1; j++) {
                 value = (dm2dGetEntry(matrix, i-1, j) + dm2dGetEntry(matrix, i+1, j) + dm2dGetEntry(matrix, i, j-1) + dm2dGetEntry(matrix, i, j+1) ) / 4.0;
-             //   printf("\nvalue:%f\n",value);
-
                 dm2dSetEntry(matrix_aux, i, j, value);
             }
         }
 		
-		// se id par, recebe e depois envia mensagem
+		// se id for par, recebe e depois envia uma linha
         if (id%2==0){
-            if (id!=0){ // se nao a primeira thread, troca com a anterior
+            if (id!=0){ // se nao e a primeira thread, troca mensagens com a thread anterior (e atualiza a respetiva linha)
                 receberMensagem(id-1,id,recebe_linha, sizeof(double)*(col+2));
                 dm2dSetLine(matrix_aux,0,recebe_linha);
                 enviarMensagem(id,id-1,dm2dGetLine(matrix_aux,1), sizeof(double)*(col+2));
+                
             }
-            if (id!=tarefas-1){ // se nao a ultima thread, troca com a seguinte
+            if (id!=tarefas-1){ // se nao e a ultima thread, troca com a thread seguinte
                 receberMensagem(id+1,id,recebe_linha, sizeof(double)*(col+2)); 
-                dm2dSetLine(matrix_aux,linhas+2,recebe_linha);
+                dm2dSetLine(matrix_aux,linhas+1,recebe_linha);
                 enviarMensagem(id,id+1,dm2dGetLine(matrix_aux,linhas), sizeof(double)*(col+2));
             }
         }
             
-        //se id impar, envia e depois recebe mensagem
+        //se id for impar, envia e depois recebe uma linha
         if (id%2==1){         
-            //se impar, nunca e primeira
+            //se impar, nunca e a primeira thread
             enviarMensagem(id,id-1,dm2dGetLine(matrix_aux,1), sizeof(double)*(col+2));
-            receberMensagem(id-1,id,recebe_linha, sizeof(double)*(col+2)); 
+            receberMensagem(id-1,id,recebe_linha, sizeof(double)*(col+2));
             dm2dSetLine(matrix_aux,0,recebe_linha);
             
-            if (id!=tarefas-1){ //se nao e a ultima thread, troca com a seguinte
+            if (id!=tarefas-1){
                 enviarMensagem(id,id+1,dm2dGetLine(matrix_aux,linhas), sizeof(double)*(col+2));
                 receberMensagem(id+1,id,recebe_linha,sizeof(double)*(col+2)); 
-                dm2dSetLine(matrix_aux,linhas+2,recebe_linha);
-                
+                dm2dSetLine(matrix_aux,linhas+1,recebe_linha);
             }
         }
 		
-        //troca aux com matrix
         tmp = matrix_aux;
         matrix_aux = matrix;
         matrix = tmp;
     }
-    //envia para a main
+    //Saida, envia para a main
     for (i=1;i<linhas+1;i++){
         enviarMensagem(id,tarefas,dm2dGetLine(matrix,i),sizeof(double)*(col+2));
     }
@@ -198,13 +181,13 @@ int main (int argc, char** argv) {
     return 1;
     }
     
-    DoubleMatrix2D *matrix_final;
-    matrix_final=dm2dNew(N,N);
+    DoubleMatrix2D *matrix_final; //matriz resultado, vai receber resultados das threads
+    matrix_final=dm2dNew(N+2,N+2);
     dm2dSetLineTo(matrix_final,0,tSup);
-    dm2dSetLineTo(matrix_final,N+2,tInf);
+    dm2dSetLineTo(matrix_final,N+1,tInf);
 
     
-    info_t info[trab]; //array com estrutura para passar a cada thread
+    info_t info[trab]; //array de estruturas com a informacao a passar a cada thread
     pthread_t *threads;
     threads=(pthread_t*)malloc(trab*sizeof(pthread_t)); //array com id de cada thread
     
@@ -229,15 +212,13 @@ int main (int argc, char** argv) {
     
     //Saida
     double recebe_linha[N+2];
-    
     int k;
+    //para cada thread (i) copia cada linha(k) para a matriz principal, e acaba a thread
     for (i=0;i<trab;i++){
             for (k=1;k<(N/trab+1);k++){
                 receberMensagem(i,trab,recebe_linha,sizeof(double)*(N+2));
                 dm2dSetLine(matrix_final,N/trab*i+k,recebe_linha);
         }
-        
-        //acaba thread
         if (pthread_join(threads[i],NULL)){
             fprintf(stderr, "\nErro ao esperar por um escravo\n");
             return -1;
