@@ -35,8 +35,9 @@ typedef struct channel_t {
 int                channel_capacity;
 int                number_of_tasks;
 Channel_t          **channel_array;
-int bloqueia_canal[];
+int                (*bloqueia_canal);
 pthread_mutex_t    single_mutex;
+pthread_mutex_t    second_mutex;
 pthread_cond_t     wait_for_free_space;
 pthread_cond_t     wait_for_messages;
 pthread_cond_t     r_in;
@@ -86,7 +87,7 @@ int inicializarMPlib(int capacidade_de_cada_canal, int ntasks) {
   number_of_tasks  = ntasks;
   channel_capacity = capacidade_de_cada_canal;
   channel_array    = (Channel_t**) malloc (sizeof(Channel_t*)*ntasks*ntasks);
-  bloqueia_canal   = (int **) malloc (sizeof(int*)*ntasks*ntasks);
+  bloqueia_canal   = malloc (sizeof(int*)*ntasks*ntasks);
   
   if (channel_array == NULL) {
     fprintf(stderr, "\nErro ao alocar memória para MPlib\n");
@@ -94,6 +95,11 @@ int inicializarMPlib(int capacidade_de_cada_canal, int ntasks) {
   }
 
   if(pthread_mutex_init(&single_mutex, NULL) != 0) {
+    fprintf(stderr, "\nErro ao inicializar mutex\n");
+    return -1;
+  }
+  
+  if(pthread_mutex_init(&second_mutex, NULL) != 0) {
     fprintf(stderr, "\nErro ao inicializar mutex\n");
     return -1;
   }
@@ -216,15 +222,16 @@ int receberMensagem(int tarefaOrig, int tarefaDest, void *buffer, int tamanho) {
   if(pthread_mutex_lock(&single_mutex) != 0) {
         fprintf(stderr, "\nErro ao bloquear mutex\n");
         return -1;
+  }
   
-  while (bloqueia_canal[tarefaDest*trab+tarefaOrig]==1){
+  while (bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]==1){
     if(pthread_cond_wait(&w_in, &single_mutex) != 0) {
         fprintf(stderr, "\nErro ao esperar pela variável de condição\n");
         return -1;
       }
   } 
   
-  bloqueia_canal[tarefaDest*trab+tarefaOrig]=1;
+  bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]=1;
     
   if(pthread_mutex_unlock(&single_mutex) != 0) {
         fprintf(stderr, "\nErro ao desbloquear mutex\n");
@@ -238,8 +245,9 @@ int receberMensagem(int tarefaOrig, int tarefaDest, void *buffer, int tamanho) {
     if(pthread_mutex_lock(&single_mutex) != 0) {
         fprintf(stderr, "\nErro ao bloquear mutex\n");
         return -1;
+    }
     
-    bloqueia_canal[tarefaDest*trab+tarefaOrig]=0;
+    bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]=0;
     if(pthread_cond_broadcast(&r_in) != 0) {
         fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
         return -1;
@@ -251,13 +259,13 @@ int receberMensagem(int tarefaOrig, int tarefaDest, void *buffer, int tamanho) {
         return -1;
     }
     
-    bloqueia_canal[tarefaDest*trab+tarefaOrig]=1;
+    bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]=1;
 
     if(pthread_mutex_unlock(&single_mutex) != 0) {
         fprintf(stderr, "\nErro ao desbloquear mutex\n");
         return -1;
     }
-    mess = (Message_t*) leQueRemFirst (channel->message_list);
+    mess = (Message_t*) leQueRemFirst (channel->message_list);  
   }
     
   copysize = (mess->mess_size<tamanho) ? mess->mess_size : tamanho;
@@ -269,11 +277,11 @@ int receberMensagem(int tarefaOrig, int tarefaDest, void *buffer, int tamanho) {
   else
     mess->consumed = 1;
   
-  bloqueia_canal[tarefaDest*trab+tarefaOrig]=0;
+  bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]=0;
   if(pthread_cond_broadcast(&r_in) != 0) {
         fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
         return -1;
-    }
+  }
 
   if(pthread_cond_broadcast(&wait_for_free_space) != 0) {
     fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
@@ -336,22 +344,22 @@ int enviarMensagem(int tarefaOrig, int tarefaDest, void *msg, int tamanho) {
                 fprintf(stderr, "\nErro ao bloquear mutex\n");
                 return -1;
             }
-            while (bloqueia_canal[tarefaDest*trab+tarefaOrig]==1){
+            while (bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]==1){
                 if(pthread_cond_wait(&r_in, &single_mutex) != 0) {
-                    fprintarefaDesttf(stderr, "\nErro ao esperar pela variável de condição\n");
+                    fprintf(stderr, "\nErro ao esperar pela variável de condição\n");
                     return -1;
                 }
             }
-            bloqueia_canal[tarefaDest*trab+tarefaOrig]=1;
+            bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]=1;
             if(pthread_mutex_unlock(&single_mutex) != 0) {
                 fprintf(stderr, "\nErro ao desbloquear mutex\n");
                 return -1;
             }
             a=1;
-        
+        }        
         else{
             while (leQueSize(channel->message_list) >= channel_capacity) {
-                if(pthread_mutex_lock(second_mutex) != 0) {
+                if(pthread_mutex_lock(&second_mutex) != 0) {
                     fprintf(stderr, "\nErro ao bloquear mutex\n");
                     return -1;
                 }
@@ -366,7 +374,7 @@ int enviarMensagem(int tarefaOrig, int tarefaDest, void *msg, int tamanho) {
         
             }
         }
-        }           
+  }
             
             
   else {
@@ -375,14 +383,14 @@ int enviarMensagem(int tarefaOrig, int tarefaDest, void *msg, int tamanho) {
             return -1;
         }
         
-        while (bloqueia_canal[tarefaDest*trab+tarefaOrig]==1){
+        while (bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]==1){
             if(pthread_cond_wait(&r_in, &single_mutex) != 0) {
-                fprintarefaDesttf(stderr, "\nErro ao esperar pela variável de condição\n");
+                fprintf(stderr, "\nErro ao esperar pela variável de condição\n");
                 return -1;
             }
         }        
         
-        bloqueia_canal[tarefaDest*trab+tarefaOrig]=1;
+        bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]=1;
         a=1;
         
         if(pthread_mutex_unlock(&single_mutex) != 0) {
@@ -390,20 +398,19 @@ int enviarMensagem(int tarefaOrig, int tarefaDest, void *msg, int tamanho) {
                 return -1;
         }
   }
-  }
   leQueInsLast (channel->message_list, mess);
-  pthread_cond_broadcast(&wait_for_messages);
 
   if (a==1){
-    bloqueia_canal[tarefaDest*trab+tarefaOrig]=0;
+    bloqueia_canal[tarefaDest*number_of_tasks+tarefaOrig]=0;
     pthread_cond_broadcast(&w_in);
     a=0;
   }
-
+  
+  pthread_cond_broadcast(&wait_for_messages);
 
   /* if channels are not buffered, wait for message to be read */
   if (channel_capacity==0) {
-        if(pthread_mutex_lock(single_mutex) != 0) {
+        if(pthread_mutex_lock(&single_mutex) != 0) {
             fprintf(stderr, "\nErro ao bloquear mutex\n");
             return -1;
         }
