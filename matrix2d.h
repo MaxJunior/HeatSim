@@ -19,7 +19,7 @@ void            dm2dFree (DoubleMatrix2D *matrix);
 void            dm2dSetLineTo (DoubleMatrix2D *matrix, int line, double value);
 void            dm2dSetColumnTo (DoubleMatrix2D *matrix, int column, double value);
 void            dm2dPrint (FILE *filepointer,DoubleMatrix2D *matrix);
-void            dm2dInitiate(DoubleMatrix2D *matrix, int N, double tSup, double tInf, double tEsq, double tDir);
+DoubleMatrix2D  *dm2dInitiate(DoubleMatrix2D *matrix, int N, double tSup, double tInf, double tEsq, double tDir);
 DoubleMatrix2D *readMatrix2dFromFile(FILE *f, int l, int c);
 
 #define         dm2dGetEntry(m,l,c)    m->data[((l)*m->n_c)+(c)]

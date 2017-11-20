@@ -113,10 +113,12 @@ DoubleMatrix2D *readMatrix2dFromFile(FILE *f, int l, int c) {
   return m;
 }
 
-void dm2dInitiate(DoubleMatrix2D *matrix, int N, double tSup, double tInf, double tEsq, double tDir){
+DoubleMatrix2D* dm2dInitiate(DoubleMatrix2D *matrix, int N, double tSup, double tInf, double tEsq, double tDir){
+    matrix=dm2dNew(N+2,N+2);
     dm2dSetLineTo(matrix,0,tSup);
     dm2dSetLineTo(matrix,N+1,tInf);       
     dm2dSetColumnTo (matrix, 0, tEsq);        
     dm2dSetColumnTo (matrix, N+1, tDir);
+    return matrix;
 }
 

@@ -9,6 +9,7 @@ Aluno : Maxwell SMart Ntido Junior , num:79457
 */
 
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <pthread.h>
@@ -65,7 +66,8 @@ void *simul(void *information) {
             // save(matrix,periodoS,fichS);
             int pid;
             const int periodoS=slave_info->periodoS;
-            const char *filename=slave_info->filename;
+            char *filename=slave_info->filename;
+            char *filename_aux=strcat(filename,"~");
             if (periodoS!=0){
                 //problem:k=0
                 if ((k-1)%periodoS==0){
@@ -73,9 +75,12 @@ void *simul(void *information) {
                     if (pid==0){
                         printf("filho:saving iter:%d\n",k-1);
 
-                        FILE *filepointer=fopen(filename,"w");
+                        FILE *filepointer=fopen(filename_aux,"w");
                         dm2dPrint(filepointer,matrix);
                         fclose(filepointer);
+                        //unlink(filename);
+                        rename(filename_aux,filename);
+                        //unlink(filename_aux);
                         exit(0);
                     }
                     else if (pid<0){
@@ -255,40 +260,33 @@ int main (int argc, char** argv) {
     printf("before open\n");
     FILE *ficheiro;
     ficheiro=fopen(fichS,"r");
-    printf("after open\n");
 
     if (ficheiro!=NULL){
         matrix=readMatrix2dFromFile(ficheiro, N+2, N+2);
-        fclose(ficheiro);        
+        fclose(ficheiro);
+        printf("after read file \n");
     }    
-    printf("after read file \n");
     
     if(matrix==NULL){
-        matrix=dm2dNew(N+2,N+2);
-        dm2dInitiate(matrix, N, tSup,tInf,tEsq,tDir);        
+        matrix=dm2dInitiate(matrix, N, tSup,tInf,tEsq,tDir);        
         printf("inicializando matrix\n");       
     }
-    matrix_aux=dm2dNew(N+2,N+2);
-    dm2dInitiate(matrix_aux, N,tSup,tInf,tEsq,tDir);        
+    matrix_aux=dm2dInitiate(matrix_aux, N,tSup,tInf,tEsq,tDir);        
     
     dm2dPrint(stdout,matrix);
-
     
     if(pthread_mutex_init(&espera_mutex, NULL) != 0) {
         fprintf(stderr, "\nErro ao inicializar mutex\n");
         return -1;
     }
-    
     if(pthread_mutex_init(&saiu_mutex, NULL) != 0) {
         fprintf(stderr, "\nErro ao inicializar mutex\n");
         return -1;
     }
-    
     if(pthread_mutex_init(&max_mutex, NULL) != 0) {
         fprintf(stderr, "\nErro ao inicializar mutex\n");
         return -1;
     }
-  
     if(pthread_cond_init(&espera_por_todos, NULL) != 0) {
         fprintf(stderr, "\nErro ao inicializar variável de condição\n");
         return -1;
@@ -300,18 +298,15 @@ int main (int argc, char** argv) {
     
     info_t *info;
     info=(info_t*)malloc(trab*sizeof(info_t)); //array de estruturas com a informacao a passar a cada thread
-
     pthread_t *threads;
     threads=(pthread_t*)malloc(trab*sizeof(pthread_t)); //array com id de cada thread
-    
     if (info==NULL||threads==NULL){
         fprintf(stderr, "\nErro ao alocar memoria\n");
     }
-    int i;
     
     printf("before create\n");
 
-        
+    int i;
     for (i=0;i<trab;i++){
         //atualiza info para cada thread
         info[i].maxD=maxD;
@@ -348,17 +343,14 @@ int main (int argc, char** argv) {
         fprintf(stderr, "\nErro ao destruir mutex\n");
         exit(EXIT_FAILURE);
     }
-    
-     if(pthread_mutex_destroy(&saiu_mutex) != 0) {
+    if(pthread_mutex_destroy(&saiu_mutex) != 0) {
         fprintf(stderr, "\nErro ao destruir mutex\n");
         exit(EXIT_FAILURE);
     }
-    
     if(pthread_mutex_destroy(&max_mutex) != 0) {
         fprintf(stderr, "\nErro ao destruir mutex\n");
         exit(EXIT_FAILURE);
     }
-  
     if(pthread_cond_destroy(&espera_por_todos) != 0) {
         fprintf(stderr, "\nErro ao destruir variável de condição\n");
         exit(EXIT_FAILURE);
@@ -371,8 +363,7 @@ int main (int argc, char** argv) {
    dm2dFree(matrix);
    dm2dFree(matrix_aux);
    free(threads);
-   free(info);
-  
+   free(info);  
   
   return 0;
 }
