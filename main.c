@@ -43,7 +43,7 @@ typedef struct{
 ---------------------------------------------------------------------*/
 
 void *simul(void *information) {
-
+    
     //inicializacao das variaveis
     info_t *slave_info=(info_t *)information;
     
@@ -56,41 +56,35 @@ void *simul(void *information) {
     double diference;
     int k,i,j;
     double value;
-    
+    printf("in:first_line:%d\n",first_line);
+
    	//atualiza matrix
    	for (k=0;k<iter;k++){
         
         if (first_line==1){
+            // save(matrix,periodoS,fichS);
             int pid;
-            printf("checkpoint_simulA\n");
             const int periodoS=slave_info->periodoS;
             const char *filename=slave_info->filename;
-            printf("checkpoint_simulA1\n");
-
             if (periodoS!=0){
+                //problem:k=0
                 if ((k-1)%periodoS==0){
-                    printf("checkpoint_simulB\n");
-
                     pid=fork();
                     if (pid==0){
-                        printf("saving iter:%d\n",k-1);
+                        printf("filho:saving iter:%d\n",k-1);
 
                         FILE *filepointer=fopen(filename,"w");
-                        dm2dPrint(matrix,filepointer);
+                        dm2dPrint(filepointer,matrix);
                         fclose(filepointer);
                         exit(0);
                     }
                     else if (pid<0){
                         fprintf(stderr, "\nErro ao criar filho\n");
-                    }                        
-                }
+                    } 
+                }                
             }
-            printf("checkpoint_simulC\n");
-
-        }
-            
+        }           
                    
-        
         //nao comeca iteracao seguinte enquanto todas as threads nao sairem da barreira
         if(pthread_mutex_lock(&saiu_mutex) != 0) {
             fprintf(stderr, "\nErro ao bloquear mutex\n");
@@ -136,6 +130,7 @@ void *simul(void *information) {
         tem_esperar++;
         
         //troca matrizes apenas uma vez
+        
         if (tem_esperar==1){            
             tmp = matrix_aux;
             matrix_aux = matrix;
@@ -185,8 +180,7 @@ void *simul(void *information) {
         if(pthread_mutex_unlock(&saiu_mutex) != 0) {           
             fprintf(stderr, "\nErro ao desbloquear mutex\n");
             exit(-1);
-        }
-        
+        }       
         
     }
     return 0;
@@ -257,36 +251,27 @@ int main (int argc, char** argv) {
         " Lembrar que N >= 1, temperaturas >= 0, iteracoes >= 1, N is divisble by trab, trab>0, maxD>=0 e periodoS>0\n\n");
     return 1;
     }
-    
-    printf("checkpointA\n");
+
+    printf("before open\n");
     FILE *ficheiro;
     ficheiro=fopen(fichS,"r");
-    printf("checkpointA1\n");
+    printf("after open\n");
 
     if (ficheiro!=NULL){
-        matrix=readMatrix2dFromFile(ficheiro, N, N);
-        fclose(ficheiro);
-
+        matrix=readMatrix2dFromFile(ficheiro, N+2, N+2);
+        fclose(ficheiro);        
     }    
-    printf("checkpointB\n");
-
+    printf("after read file \n");
     
     if(matrix==NULL){
-        //inicializacao matrix
         matrix=dm2dNew(N+2,N+2);
-        matrix_aux=dm2dNew(N+2,N+2);    
-        dm2dSetLineTo(matrix,0,tSup);
-        dm2dSetLineTo(matrix_aux,0,tSup);    
-        dm2dSetLineTo(matrix,N+1,tInf);
-        dm2dSetLineTo(matrix_aux,N+1,tInf);
-        dm2dSetColumnTo (matrix, 0, tEsq);
-        dm2dSetColumnTo (matrix_aux, 0, tEsq);
-        dm2dSetColumnTo (matrix, N+1, tDir);
-        dm2dSetColumnTo (matrix_aux, N+1, tDir);
+        dm2dInitiate(matrix, N, tSup,tInf,tEsq,tDir);        
+        printf("inicializando matrix\n");       
     }
+    matrix_aux=dm2dNew(N+2,N+2);
+    dm2dInitiate(matrix_aux, N,tSup,tInf,tEsq,tDir);        
     
-    printf("checkpointC\n");
-    dm2dPrint(matrix,stdout);
+    dm2dPrint(stdout,matrix);
 
     
     if(pthread_mutex_init(&espera_mutex, NULL) != 0) {
@@ -324,7 +309,7 @@ int main (int argc, char** argv) {
     }
     int i;
     
-    printf("checkpointD\n");
+    printf("before create\n");
 
         
     for (i=0;i<trab;i++){
@@ -341,7 +326,7 @@ int main (int argc, char** argv) {
             fprintf(stderr, "\nErro ao criar um escravo\n");
         }
     }
-    printf("checkpointE\n");
+    printf("after create\n");
 
     //Saida
     for (i=0;i<trab;i++){
@@ -350,13 +335,14 @@ int main (int argc, char** argv) {
             return -1;
         }
     }
-    printf("checkpointF\n");
+    printf("after join\n");
 
-    dm2dPrint(matrix,stdout);
-    printf("checkpointG\n");
+    dm2dPrint(stdout,matrix);
+    printf("after print\n");
 
+    //problem: unlink before filho ends
     unlink(fichS);
-    printf("checkpointH\n");
+    printf("after unlink\n");
    
    if(pthread_mutex_destroy(&espera_mutex) != 0) {
         fprintf(stderr, "\nErro ao destruir mutex\n");

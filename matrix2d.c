@@ -45,22 +45,6 @@ void dm2dFree (DoubleMatrix2D *matrix) {
 }
 
 /*--------------------------------------------------------------------
-| Function: dm2dGetLine
----------------------------------------------------------------------*/
-
-double* dm2dGetLine (DoubleMatrix2D *matrix, int line_nb) {
-  return &(matrix->data[line_nb*matrix->n_c]);
-}
-
-/*--------------------------------------------------------------------
-| Function: dm2dSetLine 
----------------------------------------------------------------------*/
-
-void dm2dSetLine (DoubleMatrix2D *matrix, int line_nb, double* line_values) {
-    memcpy ((char*) &(matrix->data[line_nb*matrix->n_c]), line_values, matrix->n_c*sizeof(double));
-}
-
-/*--------------------------------------------------------------------
 | Function: dm2dSetLineTo 
 ---------------------------------------------------------------------*/
 
@@ -84,28 +68,18 @@ void dm2dSetColumnTo (DoubleMatrix2D *matrix, int column, double value) {
 }
 
 /*--------------------------------------------------------------------
-| Function: dm2dCopy
----------------------------------------------------------------------*/
-
-void dm2dCopy (DoubleMatrix2D *to, DoubleMatrix2D *from) {
-  memcpy (to->data, from->data, sizeof(double)*to->n_l*to->n_c);
-}
-
-
-/*--------------------------------------------------------------------
 | Function: dm2dPrint
 ---------------------------------------------------------------------*/
 
-void dm2dPrint (DoubleMatrix2D *matrix, FILE *filepointer) {
-  int i, j;
-  // fopen(filename,"w");
-  fprintf (filepointer,"\n");
-  for (i=0; i<matrix->n_l; i++) {
-    for (j=0; j<matrix->n_c; j++)
-      fprintf(filepointer," %8.4f", dm2dGetEntry(matrix, i, j));
+void dm2dPrint (FILE *filepointer,DoubleMatrix2D *matrix) {
+    int i, j;
     fprintf (filepointer,"\n");
-  }
-  // fclose(filepointer);
+    for (i=0; i<matrix->n_l; i++) {
+        for (j=0; j<matrix->n_c; j++){
+            fprintf(filepointer," %8.4f", dm2dGetEntry(matrix, i, j));
+        }
+        fprintf (filepointer,"\n");
+    }
 }
 
 
@@ -136,6 +110,13 @@ DoubleMatrix2D *readMatrix2dFromFile(FILE *f, int l, int c) {
       dm2dSetEntry(m, i, j, v);
     }
   }
-
   return m;
 }
+
+void dm2dInitiate(DoubleMatrix2D *matrix, int N, double tSup, double tInf, double tEsq, double tDir){
+    dm2dSetLineTo(matrix,0,tSup);
+    dm2dSetLineTo(matrix,N+1,tInf);       
+    dm2dSetColumnTo (matrix, 0, tEsq);        
+    dm2dSetColumnTo (matrix, N+1, tDir);
+}
+
