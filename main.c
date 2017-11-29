@@ -43,7 +43,6 @@ time_t          seconds,i_seconds; //segundos totais e os segundos iniciais, res
 // Recebe o sinal. Indica que recebeu para as threads terminarem e diz que e preciso guardar a matrix.
 void signalhandler(){
     finish=1;
-    n_saves=-1;
     signal(SIGINT, signalhandler);
 }
     
@@ -97,11 +96,6 @@ void *simul(void *information) {
         if(pthread_mutex_unlock(&saiu_mutex) != 0) {
             fprintf(stderr, "\nErro ao desbloquear mutex\n");
             exit(-1);
-        }
-        
-        //as threads nao continuam a iterar se o sinal for enviado.
-        if (end==1){
-            return 0;
         }
         
         for (i = first_line; i <= last_line; i++){
@@ -188,9 +182,9 @@ void *simul(void *information) {
             }
         }     
                 
-        if (max<maxD){            
+        if (max<maxD||end==1){            
             return 0;
-        }      
+        }
         
         if(pthread_mutex_lock(&saiu_mutex) != 0) {
             fprintf(stderr, "\nErro ao bloquear mutex\n");
@@ -204,6 +198,7 @@ void *simul(void *information) {
             max=0;      
             saiu=0;
             if (finish==1){
+                n_saves=-1;
                 end=1;
             }
             if(pthread_cond_broadcast(&wait_to_iterate) != 0) {
@@ -215,7 +210,8 @@ void *simul(void *information) {
         if(pthread_mutex_unlock(&saiu_mutex) != 0) {           
             fprintf(stderr, "\nErro ao desbloquear mutex\n");
             exit(-1);
-        }       
+        }
+        
         
     }
     return 0;
