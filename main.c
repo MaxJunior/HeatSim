@@ -14,6 +14,10 @@ Aluno : Maxwell SMart Ntido Junior , num:79457
 #include <errno.h>
 #include <pthread.h>
 #include <sys/unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <signal.h>
 
 #include "matrix2d.h"
 
@@ -23,10 +27,27 @@ pthread_mutex_t   max_mutex;
 pthread_cond_t    espera_por_todos;
 pthread_cond_t    wait_to_iterate;
 
+pid_t             wpid,not_wpid;
+
+int               status;
+int               n_saves;
+
 double max=0; //guarda o valor de diferenca maximo dessa iteracao(todas as tarefas) 
 int tem_esperar=0; //numero de threads que estao na barreira
 int saiu=0; //numero de threads que sairam da barreira
-DoubleMatrix2D *matrix,*matrix_aux,*tmp;
+int finish=0; //diz se o sinal SIGINT foi enviado
+int end=0;  //termina iteracoes se o sinal foi enviado
+DoubleMatrix2D  *matrix,*matrix_aux,*tmp;
+time_t          seconds,i_seconds; //segundos totais e os segundos iniciais, respetivamente
+
+// Recebe o sinal. Indica que recebeu para as threads terminarem e diz que e preciso guardar a matrix.
+void signalhandler(){
+    finish=1;
+    n_saves=-1;
+    signal(SIGINT, signalhandler);
+}
+    
+
 
 typedef struct{
     double maxD;
@@ -57,38 +78,9 @@ void *simul(void *information) {
     double diference;
     int k,i,j;
     double value;
-    printf("in:first_line:%d\n",first_line);
-
+    
    	//atualiza matrix
    	for (k=0;k<iter;k++){
-        
-        if (first_line==1){
-            // save(matrix,periodoS,fichS);
-            int pid;
-            const int periodoS=slave_info->periodoS;
-            char *filename=slave_info->filename;
-            char *filename_aux=strcat(filename,"~");
-            if (periodoS!=0){
-                //problem:k=0
-                if ((k-1)%periodoS==0){
-                    pid=fork();
-                    if (pid==0){
-                        printf("filho:saving iter:%d\n",k-1);
-
-                        FILE *filepointer=fopen(filename_aux,"w");
-                        dm2dPrint(filepointer,matrix);
-                        fclose(filepointer);
-                        //unlink(filename);
-                        rename(filename_aux,filename);
-                        //unlink(filename_aux);
-                        exit(0);
-                    }
-                    else if (pid<0){
-                        fprintf(stderr, "\nErro ao criar filho\n");
-                    } 
-                }                
-            }
-        }           
                    
         //nao comeca iteracao seguinte enquanto todas as threads nao sairem da barreira
         if(pthread_mutex_lock(&saiu_mutex) != 0) {
@@ -105,6 +97,11 @@ void *simul(void *information) {
         if(pthread_mutex_unlock(&saiu_mutex) != 0) {
             fprintf(stderr, "\nErro ao desbloquear mutex\n");
             exit(-1);
+        }
+        
+        //as threads nao continuam a iterar se o sinal for enviado.
+        if (end==1){
+            return 0;
         }
         
         for (i = first_line; i <= last_line; i++){
@@ -126,7 +123,7 @@ void *simul(void *information) {
                 }
             }
         }
-
+        
         if(pthread_mutex_lock(&espera_mutex) != 0) {
             fprintf(stderr, "\nErro ao bloquear mutex\n");
             exit(-1);
@@ -136,7 +133,7 @@ void *simul(void *information) {
         
         //troca matrizes apenas uma vez
         
-        if (tem_esperar==1){            
+        if (tem_esperar==tarefas){            
             tmp = matrix_aux;
             matrix_aux = matrix;
             matrix = tmp;
@@ -161,7 +158,37 @@ void *simul(void *information) {
             exit(-1);
         }
         
-        if (max<maxD){
+        //Guarda a matrix quando necessario. Sendo sempre a primeira thread, nao e necessario lock.
+        if (first_line==1){
+            seconds=time(NULL);
+            const int periodoS=slave_info->periodoS;
+            if (periodoS!=0){
+                if ((seconds-i_seconds-n_saves*periodoS)>periodoS){ //seconds-iseconds e o tempo que passou desde o inicio do programa. Tirando o numero de vezes que o programa guardou a matriz(ou nao, se ainda estivesse um fillho a correr) vezes o periodo, temos o tempo desde a ultima salvaguarda. 
+                    n_saves++;
+                    not_wpid=waitpid(-1, &status, WNOHANG); //Se ainda estiver um filho a correr, nao guarda a matrix.
+                    if (not_wpid!=0){
+                        int pid;
+                        const char *filename=slave_info->filename;
+                        char filename_aux[strlen(filename)+2];
+                        strcpy(filename_aux,filename);
+                        strcat(filename_aux,"~");
+                        pid=fork();
+                        if (pid==0){
+                            FILE *filepointer=fopen(filename_aux,"w");
+                            dm2dPrint(filepointer,matrix);
+                            fclose(filepointer);
+                            rename(filename_aux,filename);
+                            exit(1);
+                        }
+                        else if (pid<0){
+                            fprintf(stderr, "\nErro ao criar filho\n");
+                        }
+                    }
+                }                
+            }
+        }     
+                
+        if (max<maxD){            
             return 0;
         }      
         
@@ -171,11 +198,14 @@ void *simul(void *information) {
         }     
         
         saiu++;
-        //reinicializa variaveis
+        //reinicializa variaveis. se durante as iteracoes ocorreu o sinal, indica as threads que tem de terminar.
         if (saiu==tarefas){
             tem_esperar=0;
             max=0;      
             saiu=0;
+            if (finish==1){
+                end=1;
+            }
             if(pthread_cond_broadcast(&wait_to_iterate) != 0) {
                 fprintf(stderr, "\nErro ao desbloquear variável de condição\n");
                 exit(-1);
@@ -247,34 +277,27 @@ int main (int argc, char** argv) {
     char* fichS = argv[9];
     int periodoS = parse_integer_or_exit(argv[10], "periodoS");
 
-    fprintf(stderr, "\nArgumentos:\n"
-	" N=%d tEsq=%.1f tSup=%.1f tDir=%.1f tInf=%.1f iteracoes=%d trab=%d maxD=%.1f fichS=%s periodoS=%d\n",
-	N, tEsq, tSup, tDir, tInf, iteracoes, trab, maxD, fichS, periodoS);
-
-    if(N < 1 || tEsq < 0 || tSup < 0 || tDir < 0 || tInf < 0 || iteracoes < 1 || N%trab!=0 || maxD<0 || trab<0 ||periodoS<0) {
+    if(N < 1 || tEsq < 0 || tSup < 0 || tDir < 0 || tInf < 0 || iteracoes < 1 || trab<1 ||N%trab!=0 || maxD<0 || periodoS<0) {
         fprintf(stderr, "\nErro: Argumentos invalidos.\n"
-        " Lembrar que N >= 1, temperaturas >= 0, iteracoes >= 1, N is divisble by trab, trab>0, maxD>=0 e periodoS>0\n\n");
-    return 1;
+        " Lembrar que N >= 1, temperaturas >= 0, iteracoes >= 1, N is divisble by trab, trab>=1, maxD>=0 e periodoS>=0\n\n");
+        return 1;
     }
-
-    printf("before open\n");
+    i_seconds=time(NULL);
+    signal(SIGINT, signalhandler);
+    
     FILE *ficheiro;
     ficheiro=fopen(fichS,"r");
 
     if (ficheiro!=NULL){
         matrix=readMatrix2dFromFile(ficheiro, N+2, N+2);
         fclose(ficheiro);
-        printf("after read file \n");
     }    
     
     if(matrix==NULL){
         matrix=dm2dInitiate(matrix, N, tSup,tInf,tEsq,tDir);        
-        printf("inicializando matrix\n");       
     }
     matrix_aux=dm2dInitiate(matrix_aux, N,tSup,tInf,tEsq,tDir);        
-    
-    dm2dPrint(stdout,matrix);
-    
+        
     if(pthread_mutex_init(&espera_mutex, NULL) != 0) {
         fprintf(stderr, "\nErro ao inicializar mutex\n");
         return -1;
@@ -304,8 +327,6 @@ int main (int argc, char** argv) {
         fprintf(stderr, "\nErro ao alocar memoria\n");
     }
     
-    printf("before create\n");
-
     int i;
     for (i=0;i<trab;i++){
         //atualiza info para cada thread
@@ -321,23 +342,21 @@ int main (int argc, char** argv) {
             fprintf(stderr, "\nErro ao criar um escravo\n");
         }
     }
-    printf("after create\n");
 
     //Saida
     for (i=0;i<trab;i++){
         if (pthread_join(threads[i],NULL)){
             fprintf(stderr, "\nErro ao esperar por um escravo\n");
             return -1;
-        }
+        }   
     }
-    printf("after join\n");
 
     dm2dPrint(stdout,matrix);
-    printf("after print\n");
 
-    //problem: unlink before filho ends
-    unlink(fichS);
-    printf("after unlink\n");
+    wpid=wait(&status);
+    if (end==0){
+        unlink(fichS);
+    }
    
    if(pthread_mutex_destroy(&espera_mutex) != 0) {
         fprintf(stderr, "\nErro ao destruir mutex\n");
